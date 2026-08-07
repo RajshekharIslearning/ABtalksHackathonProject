@@ -1,0 +1,36 @@
+{
+  "name": "abtalkshackathonproject",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test:module-b": "node src/intelligence/test.js"
+  },
+  "description": "Autonomous AI Persona — Hackathon Submission. An agent that independently discovers AI/tech topics and publishes posts autonomously.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RajshekharIslearning/ABtalksHackathonProject.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/RajshekharIslearning/ABtalksHackathonProject/issues"
+  },
+  "homepage": "https://github.com/RajshekharIslearning/ABtalksHackathonProject#readme",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.19.0",
+    "better-sqlite3": "^13.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "nanoid": "^3.3.18",
+    "node-cron": "^4.6.0",
+    "rss-parser": "^3.13.0",
+    "uuid": "^14.0.1"
+  }
+}
