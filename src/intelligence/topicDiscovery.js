@@ -5,11 +5,10 @@ const {
   createBreethClient,
   checkSemanticDuplicate,
   recordPublishedPost,
-  recordRejectedTopic,
-  recordPersonaInit
+  recordRejectedTopic
 } = require('./breethMemory');
 
-// Cache the Breeth client per agent (created once, reused)
+// Cache the Breeth client per agent (created once, reused across cycles)
 const breethClients = new Map();
 
 /**
@@ -32,11 +31,11 @@ function getBreethClient(agentId) {
 }
 
 /**
- * Keyword-based fuzzy duplicate check against SQLite memory (fast, no API cost).
- * Used as a first-pass filter before semantic search.
+ * Fast keyword-based fuzzy duplicate check against SQLite memory.
+ * No API cost. Used as first-pass filter.
  * @param {string} title
  * @param {string[]} existingTopics
- * @returns {boolean} true if duplicate
+ * @returns {boolean} true if likely duplicate
  */
 function isFuzzyDuplicate(title, existingTopics) {
   if (!existingTopics || existingTopics.length === 0) return false;
@@ -52,72 +51,46 @@ function isFuzzyDuplicate(title, existingTopics) {
 }
 
 /**
- * Two-pass deduplication:
- *   Pass 1: Fast keyword/fuzzy match against SQLite memory (no API cost)
- *   Pass 2: Semantic similarity check via Breeth (catches paraphrased duplicates)
- *
- * @param {Array} candidates - Raw fetched candidates
- * @param {string[]} publishedTopics - Topic titles already published (from SQLite)
- * @param {Array<{topic: string}>} rejectedTopics - Previously rejected (from SQLite)
- * @param {object|null} breethClient - Breeth API client (or null)
- * @param {string} agentId - For scoping Breeth memory search
- * @returns {Promise<Array>} Filtered candidate list
+ * Semantic dedup via Breeth — runs ONLY on the 12-candidate batch (not all raw candidates).
+ * Catches paraphrased duplicates that fuzzy matching misses.
+ * @param {Array} candidates - Already sliced to ≤12 items
+ * @param {object|null} breethClient
+ * @param {string} agentId
+ * @returns {Promise<Array>}
  */
-async function deduplicateCandidates(candidates, publishedTopics, rejectedTopics, breethClient, agentId) {
-  const rejectedTitles = rejectedTopics.map(r => r.topic);
-  const allSQLiteTopics = [...publishedTopics, ...rejectedTitles];
+async function deduplicateSemantically(candidates, breethClient, agentId) {
+  if (!breethClient || candidates.length === 0) return candidates;
 
-  const passOneFiltered = [];
-  let fuzzyDropCount = 0;
+  const fresh = [];
+  let dropped = 0;
 
-  // Pass 1: Fast SQLite fuzzy match
   for (const c of candidates) {
-    if (isFuzzyDuplicate(c.title, allSQLiteTopics)) {
-      fuzzyDropCount++;
-      console.log(`[TopicDiscovery] [Pass 1 - Fuzzy] Dropped: "${c.title}"`);
-    } else {
-      passOneFiltered.push(c);
-    }
-  }
-
-  console.log(`[TopicDiscovery] Pass 1 (fuzzy): ${fuzzyDropCount} dropped, ${passOneFiltered.length} remain`);
-
-  // Pass 2: Semantic dedup via Breeth (only if Breeth is available + there are candidates)
-  if (!breethClient || passOneFiltered.length === 0) {
-    return passOneFiltered;
-  }
-
-  const semanticallyFresh = [];
-  let semanticDropCount = 0;
-
-  for (const c of passOneFiltered) {
     const { isDuplicate, reason } = await checkSemanticDuplicate(
       breethClient,
       c.title,
       agentId,
-      0.85 // 85% similarity threshold
+      0.85
     );
-
     if (isDuplicate) {
-      semanticDropCount++;
-      console.log(`[TopicDiscovery] [Pass 2 - Semantic] Dropped: "${c.title}" — ${reason}`);
+      dropped++;
+      console.log(`[TopicDiscovery] [Semantic] Dropped: "${c.title}" — ${reason}`);
     } else {
-      semanticallyFresh.push(c);
+      fresh.push(c);
     }
   }
 
-  console.log(`[TopicDiscovery] Pass 2 (semantic): ${semanticDropCount} dropped, ${semanticallyFresh.length} remain`);
-  return semanticallyFresh;
+  console.log(`[TopicDiscovery] Semantic dedup: ${dropped} dropped, ${fresh.length} remain`);
+  return fresh;
 }
 
 /**
- * Persists approved and rejected decisions to both SQLite (via caller) and Breeth memory.
- * Called by the scheduler after it has saved to SQLite.
+ * Persists approved and rejected decisions to Breeth memory (non-blocking).
+ * Called by the scheduler after saving to SQLite.
  *
  * @param {object|null} breethClient
  * @param {string} personaName
- * @param {object} approvedTopic - The topic that was published
- * @param {object} publishedPost - The post that was written
+ * @param {object|null} approvedTopic - The topic that was published (or null)
+ * @param {object|null} publishedPost - The written post (or null)
  * @param {Array<{topic: string, reason: string}>} rejectedList
  * @param {string} agentId
  */
@@ -126,30 +99,31 @@ async function persistDecisionsToBreeth(breethClient, personaName, approvedTopic
 
   const tasks = [];
 
-  // Record the published post to Breeth
   if (approvedTopic && publishedPost) {
     tasks.push(recordPublishedPost(breethClient, personaName, publishedPost, approvedTopic, agentId));
   }
 
-  // Record all rejected topics to Breeth
   for (const r of rejectedList) {
     tasks.push(recordRejectedTopic(breethClient, personaName, r.topic, r.reason, agentId));
   }
 
-  // Run in parallel, don't block the scheduler
   await Promise.allSettled(tasks);
 }
 
 /**
  * Main entry point for Module B.
  *
- * Discovers live AI/tech topics, applies two-pass memory-aware deduplication
- * (SQLite fuzzy + Breeth semantic), and uses Gemini editorial judgment.
+ * Pipeline:
+ *  1. Fetch raw candidates (HackerNews + NewsAPI + RSS)
+ *  2. Fast SQLite fuzzy dedup (free, instant)
+ *  3. Slice to top 12
+ *  4. Breeth semantic dedup (12 calls max, not 44)
+ *  5. Gemini editorial judgment
  *
- * @param {string} agentId - The agent's unique ID
+ * @param {string} agentId
  * @param {object} persona - { name: string, domain: string }
- * @param {string[]} publishedTopics - Topic titles already published (from SQLite DB)
- * @param {Array<{topic: string, reason: string}>} rejectedTopics - Previously rejected (from SQLite)
+ * @param {string[]} publishedTopics - From SQLite DB
+ * @param {Array<{topic: string, reason: string}>} rejectedTopics - From SQLite DB
  * @returns {Promise<{ approved: TopicCandidate[], rejected: RejectedTopic[] }>}
  */
 async function discoverAndJudgeTopics(agentId, persona, publishedTopics, rejectedTopics) {
@@ -158,7 +132,7 @@ async function discoverAndJudgeTopics(agentId, persona, publishedTopics, rejecte
 
     const breethClient = getBreethClient(agentId);
 
-    // Step 1: Fetch live candidates from multiple sources in parallel
+    // Step 1: Fetch live candidates from all sources in parallel
     const rawCandidates = await fetchAllCandidates(persona);
 
     if (rawCandidates.length === 0) {
@@ -168,34 +142,43 @@ async function discoverAndJudgeTopics(agentId, persona, publishedTopics, rejecte
 
     console.log(`[TopicDiscovery] Fetched ${rawCandidates.length} raw candidates`);
 
-    // Step 2: Two-pass deduplication (SQLite fuzzy → Breeth semantic)
-    const freshCandidates = await deduplicateCandidates(
-      rawCandidates,
-      publishedTopics,
-      rejectedTopics,
-      breethClient,
-      agentId
-    );
+    // Step 2: Fast SQLite fuzzy dedup (no API cost)
+    const allExistingTopics = [...publishedTopics, ...rejectedTopics.map(r => r.topic)];
+    const fuzzyFiltered = rawCandidates.filter(c => {
+      if (isFuzzyDuplicate(c.title, allExistingTopics)) {
+        console.log(`[TopicDiscovery] [Fuzzy] Dropped: "${c.title}"`);
+        return false;
+      }
+      return true;
+    });
+    console.log(`[TopicDiscovery] After fuzzy dedup: ${fuzzyFiltered.length} / ${rawCandidates.length} remain`);
 
-    if (freshCandidates.length === 0) {
-      console.log('[TopicDiscovery] All candidates are duplicates — nothing new to evaluate');
+    if (fuzzyFiltered.length === 0) {
+      console.log('[TopicDiscovery] All candidates are fuzzy duplicates');
       return { approved: [], rejected: [] };
     }
 
-    // Step 3: Limit batch before sending to Gemini (cost control)
-    const candidateBatch = freshCandidates.slice(0, 12);
-    console.log(`[TopicDiscovery] Sending ${candidateBatch.length} candidates to Gemini editorial judge...`);
+    // Step 3: Slice to top 12 BEFORE Breeth (saves API calls: 12 calls, not 44)
+    const candidateBatch = fuzzyFiltered.slice(0, 12);
+    console.log(`[TopicDiscovery] Batch: top ${candidateBatch.length} candidates`);
 
-    // Step 4: Editorial judgment via Gemini
+    // Step 4: Breeth semantic dedup on the small batch
+    const freshCandidates = await deduplicateSemantically(candidateBatch, breethClient, agentId);
+
+    if (freshCandidates.length === 0) {
+      console.log('[TopicDiscovery] All candidates removed by semantic dedup');
+      return { approved: [], rejected: [] };
+    }
+
+    // Step 5: Gemini editorial judgment
+    console.log(`[TopicDiscovery] Sending ${freshCandidates.length} candidates to Gemini...`);
     const { approved, rejected } = await judgeTopicsWithGemini(
-      candidateBatch,
+      freshCandidates,
       persona,
       publishedTopics
     );
 
-    console.log(`[TopicDiscovery] ✅ Judgment: ${approved.length} approved, ${rejected.length} rejected`);
-
-    // Sort approved by relevance score (descending)
+    console.log(`[TopicDiscovery] ✅ Result: ${approved.length} approved, ${rejected.length} rejected`);
     approved.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
 
     return { approved, rejected };

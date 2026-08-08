@@ -9,11 +9,11 @@ const rssParser = new RSSParser({
 
 // RSS feeds for AI/tech content
 const RSS_FEEDS = [
-  { url: 'https://venturebeat.com/ai/feed/', name: 'VentureBeat AI' },
-  { url: 'https://feeds.feedburner.com/oreilly/radar', name: "O'Reilly Radar" },
-  { url: 'https://www.technologyreview.com/feed/', name: 'MIT Technology Review' },
+  { url: 'https://venturebeat.com/feed/', name: 'VentureBeat' },
   { url: 'https://techcrunch.com/feed/', name: 'TechCrunch' },
-  { url: 'https://www.theverge.com/rss/index.xml', name: 'The Verge' }
+  { url: 'https://www.technologyreview.com/feed/', name: 'MIT Technology Review' },
+  { url: 'https://www.theverge.com/rss/index.xml', name: 'The Verge' },
+  { url: 'https://feeds.arstechnica.com/arstechnica/index', name: 'Ars Technica' }
 ];
 
 // Keywords that signal AI/tech relevance

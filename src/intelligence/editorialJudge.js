@@ -1,19 +1,51 @@
 'use strict';
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenAI } = require('@google/genai');
 
-let genAI;
-let model;
+let ai;
 
-function getModel() {
-  if (!model) {
+// Model preference order — tries each in sequence if one hits quota/errors
+const MODEL_FALLBACKS = [
+  'gemini-flash-lite-latest',   // primary: confirmed working, separate quota
+  'gemini-2.0-flash',           // secondary: main model
+  'gemini-2.0-flash-lite',      // tertiary: lite variant
+];
+
+function getAI() {
+  if (!ai) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === 'your_gemini_api_key_here') {
       throw new Error('GEMINI_API_KEY is not configured');
     }
-    genAI = new GoogleGenerativeAI(apiKey);
-    model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    ai = new GoogleGenAI({ apiKey });
   }
-  return model;
+  return ai;
+}
+
+/**
+ * Calls Gemini with automatic model fallback and retry on quota/rate limit errors.
+ * @param {string} prompt
+ * @returns {Promise<string>} Response text
+ */
+async function callGeminiWithRetry(prompt) {
+  const client = getAI();
+
+  for (const model of MODEL_FALLBACKS) {
+    try {
+      const response = await client.models.generateContent({ model, contents: prompt });
+      return response.text;
+    } catch (err) {
+      let errCode = 0;
+      try { errCode = JSON.parse(err.message)?.error?.code; } catch (_) {}
+
+      if (errCode === 429 || errCode === 503) {
+        console.warn(`[EditorialJudge] Model "${model}" quota/busy (${errCode}), trying next fallback...`);
+        continue; // Try next model in fallback chain
+      }
+      throw err; // Non-quota error — bubble up
+    }
+  }
+
+  throw new Error('All Gemini model fallbacks exhausted — all models returned quota errors');
 }
 
 /**
@@ -27,7 +59,7 @@ function safeParseJson(text) {
     .replace(/```\s*/gi, '')
     .trim();
 
-  // Find the first { and last } to extract JSON
+  // Find the first { and last } to extract JSON object
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
   if (start === -1 || end === -1) throw new Error('No JSON object found in response');
@@ -36,15 +68,13 @@ function safeParseJson(text) {
 }
 
 /**
- * Uses Gemini to evaluate topic candidates and return approved/rejected lists.
+ * Uses Gemini 2.0 Flash to evaluate topic candidates and return approved/rejected lists.
  * @param {Array} candidates - Array of { title, summary, url, source }
  * @param {object} persona - { name, domain }
  * @param {string[]} publishedTopics - Already published topic titles
  * @returns {Promise<{ approved: Array, rejected: Array }>}
  */
 async function judgeTopicsWithGemini(candidates, persona, publishedTopics) {
-  const mdl = getModel();
-
   const publishedList = publishedTopics.length > 0
     ? publishedTopics.slice(0, 20).join('\n- ')
     : '(none yet)';
@@ -99,9 +129,8 @@ Respond with ONLY valid JSON (no markdown, no explanation outside the JSON):
   ]
 }`;
 
-  const result = await mdl.generateContent(prompt);
-  const text = result.response.text();
-
+  // Use retry/fallback helper — handles quota errors across model variants
+  const text = await callGeminiWithRetry(prompt);
   const parsed = safeParseJson(text);
 
   // Enrich approved topics with full candidate data
