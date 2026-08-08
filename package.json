@@ -9,6 +9,9 @@
     "test:module-b": "node src/intelligence/test.js",
     "test:module-c": "node src/persona/test.js"
   },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RajshekharIslearning/ABtalksHackathonProject.git"
