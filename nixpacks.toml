@@ -1,8 +1,5 @@
 [phases.setup]
-nixPkgs = ["python3", "gcc", "gnumake"]
-
-[phases.install]
-cmds = ["npm ci"]
+nixPkgs = ["...", "python3", "gcc", "gnumake"]
 
 [start]
 cmd = "node src/server.js"
