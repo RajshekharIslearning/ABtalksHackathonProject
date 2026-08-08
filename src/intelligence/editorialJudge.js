@@ -12,9 +12,9 @@ const MODEL_FALLBACKS = [
 
 function getAI() {
   if (!ai) {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY_B;
     if (!apiKey || apiKey === 'your_gemini_api_key_here') {
-      throw new Error('GEMINI_API_KEY is not configured');
+      throw new Error('GEMINI_API_KEY_B is not configured');
     }
     ai = new GoogleGenAI({ apiKey });
   }

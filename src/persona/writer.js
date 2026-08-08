@@ -28,37 +28,30 @@
  */
 
 require('dotenv').config();
-const { GoogleGenerativeAI, SchemaType } = require('@google/generative-ai');
+const { GoogleGenAI, Type } = require('@google/genai');
 const { nanoid } = require('nanoid');
 const { getPersonaProfile } = require('./personaProfiles');
 const { validate } = require('./validators');
 const { formatPostText, formatRationale } = require('./postFormatter');
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GEMINI CLIENT — lazy initialization, same pattern as Module B
-// ─────────────────────────────────────────────────────────────────────────────
+let _ai;
 
-let _genAI;
-let _model;
+// Model preference order — tries each in sequence if one hits quota/errors
+const MODEL_FALLBACKS = [
+  'gemini-flash-lite-latest',
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+];
 
-/**
- * Lazily initializes the Gemini model.
- * Throws if GEMINI_API_KEY is missing — caught upstream by writeAndPublishPost.
- * @returns {object} Gemini GenerativeModel instance
- */
-function getModel() {
-  if (!_model) {
+function getAI() {
+  if (!_ai) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === 'your_gemini_api_key_here') {
       throw new Error('GEMINI_API_KEY is not configured. Set it in your .env file.');
     }
-    _genAI = new GoogleGenerativeAI(apiKey);
-
-    // Structured output schema — SDK 0.24.x supports responseSchema via generationConfig
-    // We define the schema here and pass it per-call to allow model reuse.
-    _model = _genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    _ai = new GoogleGenAI({ apiKey });
   }
-  return _model;
+  return _ai;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,30 +63,30 @@ const GENERATION_CONFIG = {
   maxOutputTokens: 1024,
   responseMimeType: 'application/json',
   responseSchema: {
-    type: SchemaType.OBJECT,
+    type: Type.OBJECT,
     properties: {
       postText: {
-        type: SchemaType.STRING,
+        type: Type.STRING,
         description: 'The professional post text (150–280 words)',
       },
       rationale: {
-        type: SchemaType.OBJECT,
+        type: Type.OBJECT,
         properties: {
           whySelected: {
-            type: SchemaType.STRING,
+            type: Type.STRING,
             description: 'Why this topic is appropriate for this persona',
           },
           whyRelevantNow: {
-            type: SchemaType.STRING,
+            type: Type.STRING,
             description: 'Why the topic is timely right now',
           },
           editorialStandards: {
-            type: SchemaType.STRING,
+            type: Type.STRING,
             description: 'How this post meets the persona\'s quality standards',
           },
           sources: {
-            type: SchemaType.ARRAY,
-            items: { type: SchemaType.STRING },
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
             description: 'Source URLs — must include the original topic URL',
           },
         },
@@ -270,11 +263,7 @@ ${buildPrompt(persona, profile, topic)}`;
  * @param {object} result - Gemini generateContent() result
  * @returns {object} Parsed post object with { postText, rationale }
  */
-function parseGeminiResponse(result) {
-  const text = result.response.text();
-
-  // With responseMimeType: 'application/json', Gemini returns clean JSON directly
-  // Parse it and verify shape
+function parseGeminiResponse(text) {
   const parsed = JSON.parse(text);
 
   if (!parsed || typeof parsed !== 'object') {
@@ -285,23 +274,35 @@ function parseGeminiResponse(result) {
 }
 
 /**
- * Calls Gemini to generate a post for the given prompt.
- * Uses structured output mode (responseMimeType: 'application/json' + responseSchema).
- *
- * @param {string} prompt - Generation prompt
- * @param {string} systemInstruction - System-level instruction
- * @returns {Promise<object>} Parsed structured post object
+ * Calls Gemini with automatic model fallback and retry on quota/rate limit errors.
  */
 async function callGemini(prompt, systemInstruction) {
-  const mdl = getModel();
+  const ai = getAI();
 
-  const result = await mdl.generateContent({
-    systemInstruction,
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: GENERATION_CONFIG,
-  });
+  for (const model of MODEL_FALLBACKS) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          systemInstruction,
+          ...GENERATION_CONFIG
+        }
+      });
+      return parseGeminiResponse(response.text);
+    } catch (err) {
+      let errCode = 0;
+      try { errCode = JSON.parse(err.message)?.error?.code; } catch (_) {}
 
-  return parseGeminiResponse(result);
+      if (errCode === 429 || errCode === 503 || err.status === 429) {
+        console.warn(`[Module C] Model "${model}" quota/busy, trying next fallback...`);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw new Error('All Gemini model fallbacks exhausted in Module C');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
