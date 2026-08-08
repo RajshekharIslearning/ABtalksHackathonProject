@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test:module-b": "node src/intelligence/test.js"
+    "test:module-b": "node src/intelligence/test.js",
+    "test:module-c": "node src/persona/test.js"
   },
   "repository": {
     "type": "git",
