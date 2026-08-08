@@ -104,8 +104,15 @@ function startScheduler(agentId, persona) {
   // Run immediately on initialization (don't wait for first cron tick)
   setImmediate(() => runCycle(agentId, persona));
 
+  // Construct safe cron expression for any interval
+  let cronExpr = `*/${INTERVAL} * * * *`;
+  if (INTERVAL >= 60) {
+    const hours = Math.max(1, Math.floor(INTERVAL / 60));
+    cronExpr = `0 */${hours} * * *`;
+  }
+
   // Schedule recurring autonomous runs
-  const task = cron.schedule(`*/${INTERVAL} * * * *`, () => {
+  const task = cron.schedule(cronExpr, () => {
     runCycle(agentId, persona);
   });
 
