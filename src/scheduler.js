@@ -1,7 +1,8 @@
 'use strict';
 const cron = require('node-cron');
 const db = require('./db');
-const { discoverAndJudgeTopics } = require('./intelligence/topicDiscovery');
+const { discoverAndJudgeTopics, persistDecisionsToBreeth, getBreethClient } = require('./intelligence/topicDiscovery');
+const { recordPersonaInit } = require('./intelligence/breethMemory');
 const { writeAndPublishPost } = require('./persona/writer');
 
 const INTERVAL = parseInt(process.env.SCHEDULE_INTERVAL_MINUTES) || 30;
@@ -35,12 +36,15 @@ async function runCycle(agentId, persona) {
 
     console.log(`[Scheduler] Topics: ${approved.length} approved, ${rejected.length} rejected`);
 
-    // 3. Save rejected topics for future memory
+    // 3. Save rejected topics to SQLite DB
     for (const r of rejected) {
       db.saveRejectedTopic(agentId, r.topic, r.reason);
     }
 
     // 4. Write and publish the top approved topic (Module C)
+    let publishedPost = null;
+    let publishedTopic = null;
+
     if (approved.length > 0) {
       const topTopic = approved[0];
       console.log(`[Scheduler] Writing post about: "${topTopic.title}"`);
@@ -49,6 +53,8 @@ async function runCycle(agentId, persona) {
 
       if (post) {
         db.savePost(agentId, post);
+        publishedPost = post;
+        publishedTopic = topTopic;
         console.log(`[Scheduler] ✅ Published post "${post.id}": ${post.text.substring(0, 80)}...`);
       } else {
         console.log('[Scheduler] ⚠️  Writer returned null — skipping this cycle');
@@ -56,6 +62,18 @@ async function runCycle(agentId, persona) {
     } else {
       console.log('[Scheduler] No approved topics this cycle — nothing published');
     }
+
+    // 5. Persist decisions to Breeth memory (non-blocking — runs in background)
+    //    This gives the agent semantic, intent-aware long-term memory
+    const breethClient = getBreethClient(agentId);
+    persistDecisionsToBreeth(
+      breethClient,
+      persona.name,
+      publishedTopic,
+      publishedPost,
+      rejected,
+      agentId
+    ).catch(err => console.error('[Scheduler] Breeth persistence error (non-fatal):', err.message));
 
     // 5. Update last run timestamp
     db.updateLastRun(agentId);

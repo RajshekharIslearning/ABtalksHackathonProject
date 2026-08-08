@@ -1,14 +1,13 @@
 {
   "name": "abtalkshackathonproject",
   "version": "1.0.0",
-  "description": "",
+  "description": "Autonomous AI Persona — Hackathon Submission. An agent that independently discovers AI/tech topics and publishes posts autonomously.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test:module-b": "node src/intelligence/test.js"
   },
-  "description": "Autonomous AI Persona — Hackathon Submission. An agent that independently discovers AI/tech topics and publishes posts autonomously.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RajshekharIslearning/ABtalksHackathonProject.git"
