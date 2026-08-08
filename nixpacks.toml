@@ -1,8 +1,5 @@
-# Nixpacks configuration for Railway deployment
-# Ensures Node.js, npm, and native C++ build tools for better-sqlite3 are present
-
 [phases.setup]
-nixPkgs = ["nodejs_20", "python3", "gcc", "gnumake", "pkg-config"]
+nixPkgs = ["...", "python3", "gcc", "gnumake"]
 
 [start]
 cmd = "node src/server.js"
