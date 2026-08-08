@@ -56,7 +56,7 @@ function getModel() {
 
     // Structured output schema — SDK 0.24.x supports responseSchema via generationConfig
     // We define the schema here and pass it per-call to allow model reuse.
-    _model = _genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    _model = _genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
   }
   return _model;
 }
