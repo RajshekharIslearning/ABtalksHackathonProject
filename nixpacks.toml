@@ -1,0 +1,11 @@
+# Nixpacks configuration for Railway deployment
+# Required for building better-sqlite3 (native C++ addon)
+
+[phases.setup]
+nixPkgs = ["python3", "gcc", "gnumake", "pkg-config"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[start]
+cmd = "node src/server.js"
