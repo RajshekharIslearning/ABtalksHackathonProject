@@ -27,7 +27,7 @@
  *   module.exports = { writeAndPublishPost }
  */
 
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const { GoogleGenAI, Type } = require('@google/genai');
 const { nanoid } = require('nanoid');
 const { getPersonaProfile } = require('./personaProfiles');

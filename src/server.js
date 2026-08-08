@@ -1,5 +1,5 @@
 'use strict';
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const express = require('express');
 const cors = require('cors');
 const db = require('./db');
@@ -35,7 +35,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`[Server] Autonomous AI Persona API running on http://localhost:${PORT}`);
   console.log(`[Server] POST /api/agent/init  — Initialize the agent`);
   console.log(`[Server] GET  /api/agent/feed  — Retrieve the post feed`);
