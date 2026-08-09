@@ -5,7 +5,7 @@ const { discoverAndJudgeTopics, persistDecisionsToBreeth, getBreethClient } = re
 const { recordPersonaInit } = require('./intelligence/breethMemory');
 const { writeAndPublishPost } = require('./persona/writer');
 
-const INTERVAL = parseInt(process.env.SCHEDULE_INTERVAL_MINUTES) || 30;
+const INTERVAL = parseInt(process.env.SCHEDULE_INTERVAL_MINUTES) || 1;
 
 // Track running schedulers to avoid duplicate jobs
 const activeSchedulers = new Map();
