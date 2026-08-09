@@ -25,16 +25,27 @@
       </div>
     </header>
 
-    <div id="loadingIndicator" class="loading hidden">
-      <div class="spinner"></div>
-      <p>Syncing neural pathways...</p>
+    <div class="app-layout">
+      <aside id="sidebar" class="glass-panel sidebar">
+        <h3 class="sidebar-title">Post History</h3>
+        <div id="historyList" class="history-list">
+          <!-- History items injected here -->
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <div id="loadingIndicator" class="loading hidden">
+          <div class="spinner"></div>
+          <p>Syncing neural pathways...</p>
+        </div>
+
+        <div id="errorBanner" class="error-banner hidden"></div>
+
+        <div id="feedContainer" class="feed-container">
+          <!-- Single post injected here -->
+        </div>
+      </main>
     </div>
-
-    <div id="errorBanner" class="error-banner hidden"></div>
-
-    <main id="feedContainer" class="feed-grid">
-      <!-- Posts will be injected here via JS -->
-    </main>
   </div>
 
   <template id="postTemplate">
