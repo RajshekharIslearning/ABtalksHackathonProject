@@ -5,6 +5,7 @@ const cors = require('cors');
 const db = require('./db');
 const initRoute = require('./routes/init');
 const feedRoute = require('./routes/feed');
+const stopRoute = require('./routes/stop');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -32,6 +33,7 @@ for (const agent of agents) {
 // Routes
 app.use('/api/agent', initRoute);
 app.use('/api/agent', feedRoute);
+app.use('/api/agent', stopRoute);
 
 // Health check
 app.get('/health', (req, res) => {
