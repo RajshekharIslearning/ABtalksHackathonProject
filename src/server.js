@@ -20,6 +20,15 @@ app.use(express.static(path.join(__dirname, '../public')));
 // Initialize the database schema on startup
 db.initializeSchema();
 
+// Resume schedulers for any existing agents
+const { startScheduler } = require('./scheduler');
+const agents = db.getAllAgents();
+for (const agent of agents) {
+  const persona = { name: agent.persona_name, domain: agent.persona_domain };
+  console.log(`[Server] Resuming scheduler for agent: ${agent.id}`);
+  startScheduler(agent.id, persona);
+}
+
 // Routes
 app.use('/api/agent', initRoute);
 app.use('/api/agent', feedRoute);

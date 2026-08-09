@@ -75,6 +75,14 @@ function getAgent(agentId) {
 }
 
 /**
+ * Retrieves all agents.
+ * @returns {Array<object>}
+ */
+function getAllAgents() {
+  return db.prepare('SELECT * FROM agents').all();
+}
+
+/**
  * Saves a published post to the database.
  * @param {string} agentId
  * @param {object} post - { id, text, rationale, sources, topic, createdAt }
@@ -164,6 +172,7 @@ module.exports = {
   initializeSchema,
   createAgent,
   getAgent,
+  getAllAgents,
   savePost,
   getPosts,
   getPublishedTopics,
