@@ -1,9 +1,8 @@
 'use strict';
 const axios = require('axios');
 
-// We use the Gemini 2.0 Flash Lite free tier model on OpenRouter as our default
-const DEFAULT_MODEL = 'google/gemini-2.0-flash-lite-preview-02-05:free';
-const FALLBACK_MODEL = 'meta-llama/llama-3-8b-instruct:free';
+// Use the OpenRouter auto-routed free models
+const DEFAULT_MODEL = 'openrouter/free';
 
 /**
  * Calls OpenRouter's OpenAI-compatible chat completions API.
@@ -15,15 +14,11 @@ async function callOpenRouterWithRetry(prompt) {
   if (!apiKey || apiKey === 'your_openrouter_api_key_here') {
     throw new Error('OPENROUTER_API_KEY is not configured');
   }
-
-  const modelsToTry = [DEFAULT_MODEL, FALLBACK_MODEL];
-
-  for (const model of modelsToTry) {
     try {
       const response = await axios.post(
         'https://openrouter.ai/api/v1/chat/completions',
         {
-          model: model,
+          model: DEFAULT_MODEL,
           messages: [{ role: 'user', content: prompt }]
         },
         {
@@ -44,14 +39,10 @@ async function callOpenRouterWithRetry(prompt) {
     } catch (err) {
       const status = err.response?.status;
       if (status === 429 || status === 502 || status === 503) {
-        console.warn(`[OpenRouter] Model "${model}" hit rate limit/busy (${status}), trying next fallback...`);
-        continue;
+        console.warn(`[OpenRouter] "openrouter/free" hit rate limit/busy (${status}).`);
       }
-      throw err; // Non-retryable error
+      throw err;
     }
-  }
-
-  throw new Error('All OpenRouter fallback models failed due to rate limits or busy servers.');
 }
 
 module.exports = { callOpenRouterWithRetry };
