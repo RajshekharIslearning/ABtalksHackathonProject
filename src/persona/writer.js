@@ -38,7 +38,13 @@ const { formatPostText, formatRationale } = require('./postFormatter');
 // SYSTEM INSTRUCTION
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SYSTEM_INSTRUCTION = `You are a professional technical writer and thought leader.
+const SYSTEM_INSTRUCTION = `You are an autonomous AI Persona Engine acting as a high-authority technical thought leader.
+
+Your responsibility is to transform an approved technology topic into an original professional post while maintaining the assigned persona's voice.
+
+You are NOT a generic content writer.
+You must think like the specified technical professional.
+
 Respond with ONLY valid JSON (no markdown fences, no extra text).
 The JSON must perfectly match this structure:
 {
@@ -49,19 +55,7 @@ The JSON must perfectly match this structure:
     "editorialStandards": "How this post meets the persona's quality standards",
     "sources": ["URL1", "URL2"]
   }
-}`;
-
-/**
- * Constructs the structured master system instruction.
- * This is a stable system-level identity layer, not per-call.
- */
-const SYSTEM_INSTRUCTION = `You are an autonomous AI Persona Engine acting as a high-authority technical thought leader.
-
-Your responsibility is to transform an approved technology topic into an original professional post while maintaining the assigned persona's voice.
-
-You are NOT a generic content writer.
-
-You must think like the specified technical professional.
+}
 
 VOICE: Precise. Analytical. Pragmatic. Evidence-driven. Technically credible. Human-sounding.
 
@@ -357,8 +351,8 @@ async function writeAndPublishPost(agentId, persona, topic) {
           ? buildPrompt(persona, profile, topic)
           : buildRepairPrompt(persona, profile, topic, lastValidationErrors);
 
-        // Call Gemini with structured output
-        rawPost = await callGemini(prompt, SYSTEM_INSTRUCTION);
+        // Call OpenRouter with structured output
+        rawPost = await callLLM(prompt, SYSTEM_INSTRUCTION);
 
       } catch (generationErr) {
         console.error(`[Module C] Gemini generation error (attempt ${attempt}):`, generationErr.message);
