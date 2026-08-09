@@ -1,25 +1,5 @@
 'use strict';
-const { GoogleGenAI } = require('@google/genai');
-
-let ai;
-
-// Model preference order — tries each in sequence if one hits quota/errors
-const MODEL_FALLBACKS = [
-  'gemini-flash-lite-latest',   // primary: confirmed working, separate quota
-  'gemini-2.0-flash',           // secondary: main model
-  'gemini-2.0-flash-lite',      // tertiary: lite variant
-];
-
-function getAI() {
-  if (!ai) {
-    const apiKey = process.env.GEMINI_API_KEY_B;
-    if (!apiKey || apiKey === 'your_gemini_api_key_here') {
-      throw new Error('GEMINI_API_KEY_B is not configured');
-    }
-    ai = new GoogleGenAI({ apiKey });
-  }
-  return ai;
-}
+const { callOpenRouterWithRetry } = require('../openRouterClient');
 
 /**
  * Calls Gemini with automatic model fallback and retry on quota/rate limit errors.
@@ -27,25 +7,7 @@ function getAI() {
  * @returns {Promise<string>} Response text
  */
 async function callGeminiWithRetry(prompt) {
-  const client = getAI();
-
-  for (const model of MODEL_FALLBACKS) {
-    try {
-      const response = await client.models.generateContent({ model, contents: prompt });
-      return response.text;
-    } catch (err) {
-      let errCode = 0;
-      try { errCode = JSON.parse(err.message)?.error?.code; } catch (_) {}
-
-      if (errCode === 429 || errCode === 503) {
-        console.warn(`[EditorialJudge] Model "${model}" quota/busy (${errCode}), trying next fallback...`);
-        continue; // Try next model in fallback chain
-      }
-      throw err; // Non-quota error — bubble up
-    }
-  }
-
-  throw new Error('All Gemini model fallbacks exhausted — all models returned quota errors');
+  return await callOpenRouterWithRetry(prompt);
 }
 
 /**

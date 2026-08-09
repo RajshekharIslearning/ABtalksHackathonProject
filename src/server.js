@@ -9,8 +9,13 @@ const feedRoute = require('./routes/feed');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const path = require('path');
+
 app.use(cors());
 app.use(express.json());
+
+// Serve static frontend files from 'public' directory
+app.use(express.static(path.join(__dirname, '../public')));
 
 // Initialize the database schema on startup
 db.initializeSchema();

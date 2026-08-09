@@ -28,78 +28,28 @@
  */
 
 require('dotenv').config({ quiet: true });
-const { GoogleGenAI, Type } = require('@google/genai');
+const { callOpenRouterWithRetry } = require('../openRouterClient');
 const { nanoid } = require('nanoid');
 const { getPersonaProfile } = require('./personaProfiles');
 const { validate } = require('./validators');
 const { formatPostText, formatRationale } = require('./postFormatter');
 
-let _ai;
+// ─────────────────────────────────────────────────────────────────────────────
+// SYSTEM INSTRUCTION
+// ─────────────────────────────────────────────────────────────────────────────
 
-// Model preference order — tries each in sequence if one hits quota/errors
-const MODEL_FALLBACKS = [
-  'gemini-flash-lite-latest',
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-];
-
-function getAI() {
-  if (!_ai) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey || apiKey === 'your_gemini_api_key_here') {
-      throw new Error('GEMINI_API_KEY is not configured. Set it in your .env file.');
-    }
-    _ai = new GoogleGenAI({ apiKey });
+const SYSTEM_INSTRUCTION = `You are a professional technical writer and thought leader.
+Respond with ONLY valid JSON (no markdown fences, no extra text).
+The JSON must perfectly match this structure:
+{
+  "postText": "The professional post text (150–280 words)",
+  "rationale": {
+    "whySelected": "Why this topic is appropriate for this persona",
+    "whyRelevantNow": "Why the topic is timely right now",
+    "editorialStandards": "How this post meets the persona's quality standards",
+    "sources": ["URL1", "URL2"]
   }
-  return _ai;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// GENERATION CONFIG
-// ─────────────────────────────────────────────────────────────────────────────
-
-const GENERATION_CONFIG = {
-  temperature: 0.3,
-  maxOutputTokens: 1024,
-  responseMimeType: 'application/json',
-  responseSchema: {
-    type: Type.OBJECT,
-    properties: {
-      postText: {
-        type: Type.STRING,
-        description: 'The professional post text (150–280 words)',
-      },
-      rationale: {
-        type: Type.OBJECT,
-        properties: {
-          whySelected: {
-            type: Type.STRING,
-            description: 'Why this topic is appropriate for this persona',
-          },
-          whyRelevantNow: {
-            type: Type.STRING,
-            description: 'Why the topic is timely right now',
-          },
-          editorialStandards: {
-            type: Type.STRING,
-            description: 'How this post meets the persona\'s quality standards',
-          },
-          sources: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-            description: 'Source URLs — must include the original topic URL',
-          },
-        },
-        required: ['whySelected', 'whyRelevantNow', 'editorialStandards', 'sources'],
-      },
-    },
-    required: ['postText', 'rationale'],
-  },
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PROMPT CONSTRUCTION
-// ─────────────────────────────────────────────────────────────────────────────
+}`;
 
 /**
  * Constructs the structured master system instruction.
@@ -257,52 +207,34 @@ ${buildPrompt(persona, profile, topic)}`;
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Parses the Gemini response into a structured post object.
- * Handles both structured JSON (via responseMimeType) and fallback text.
- *
- * @param {object} result - Gemini generateContent() result
+ * Safely parses JSON from LLM response text, stripping markdown fences.
+ * @param {string} text
  * @returns {object} Parsed post object with { postText, rationale }
  */
-function parseGeminiResponse(text) {
-  const parsed = JSON.parse(text);
+function safeParseJson(text) {
+  const cleaned = text
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/gi, '')
+    .trim();
 
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start === -1 || end === -1) throw new Error('No JSON object found in response');
+
+  const parsed = JSON.parse(cleaned.substring(start, end + 1));
   if (!parsed || typeof parsed !== 'object') {
-    throw new Error('Gemini response did not parse to an object');
+    throw new Error('Response did not parse to an object');
   }
-
   return parsed;
 }
 
 /**
- * Calls Gemini with automatic model fallback and retry on quota/rate limit errors.
+ * Calls OpenRouter with the system instruction included.
  */
-async function callGemini(prompt, systemInstruction) {
-  const ai = getAI();
-
-  for (const model of MODEL_FALLBACKS) {
-    try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-          systemInstruction,
-          ...GENERATION_CONFIG
-        }
-      });
-      return parseGeminiResponse(response.text);
-    } catch (err) {
-      let errCode = 0;
-      try { errCode = JSON.parse(err.message)?.error?.code; } catch (_) {}
-
-      if (errCode === 429 || errCode === 503 || err.status === 429) {
-        console.warn(`[Module C] Model "${model}" quota/busy, trying next fallback...`);
-        continue;
-      }
-      throw err;
-    }
-  }
-
-  throw new Error('All Gemini model fallbacks exhausted in Module C');
+async function callLLM(prompt, systemInstruction) {
+  const fullPrompt = `${systemInstruction}\n\n${prompt}`;
+  const responseText = await callOpenRouterWithRetry(fullPrompt);
+  return safeParseJson(responseText);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
