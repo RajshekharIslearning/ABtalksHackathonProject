@@ -10,8 +10,8 @@ const DEFAULT_MODEL = 'openrouter/free';
  * @returns {Promise<string>} The generated response text
  */
 async function callOpenRouterWithRetry(prompt) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey || apiKey === 'your_openrouter_api_key_here') {
+  const apiKey = process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_B;
+  if (!apiKey || apiKey === 'your_openrouter_api_key_here' || apiKey === 'your_gemini_api_key_here') {
     throw new Error('OPENROUTER_API_KEY is not configured');
   }
     try {
